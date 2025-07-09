@@ -16,4 +16,5 @@ Email verification and OTP logic using signed tokens and expiry tracking
 Chef dashboards with the ability to manage their kitchen foods, receive orders
 
 Customers can browse kitchens, add items to cart, and place orders from multiple chefs
-Customer Dashboard for trcking their orders, order status, $ spent.
+
+Customer Dashboard for tracking their orders, order status, $ spent.
