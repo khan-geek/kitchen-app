@@ -13,6 +13,8 @@ from .drf_views import (
     KitchenDetailAPIView,
     CustomerOrdersAPIView,
     KitchenListAPIView,
+    GetKitchen,
+    VerifyOTPAPIView
 )
 
 urlpatterns = [
@@ -41,4 +43,7 @@ urlpatterns = [
     path("place-order/", PlaceOrderAPIView.as_view(), name="place-order"),
     path("my-orders/", CustomerOrdersAPIView.as_view(), name="customer-orders"),
     path("get-all-kitchens/", KitchenListAPIView.as_view(), name="get-all-kitchens"),
+    path("get-kitchen/", GetKitchen.as_view(), name="get-kitchen-for-chef"),
+    path("verify-otp/", VerifyOTPAPIView.as_view(), name="verify-otp"),
+
 ]

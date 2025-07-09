@@ -1,7 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, StrictMode } from 'react'
 import Link from 'next/link'
 
 export default function Login() {
@@ -30,6 +30,39 @@ export default function Login() {
       }))
     }
   }
+  const Redirect = async (count, user = null, refresh = false,) => {
+    console.log("redirect", count)
+    count++
+    console.log(user)
+    if (user && user.role == 'chef') {
+      try {
+        const res = await fetch('http://localhost:8000/api/auth/get-kitchen/', {
+          credentials: 'include' // Important: sends cookies
+        })
+
+
+
+        if (res && res.ok) {
+          const data = await res.json()
+          console.log(data.kitchen)
+          if (data.kitchen) {
+            router.push("/dashboard/chef")
+
+          }
+          else {
+            router.push("/kitchen-setup")
+          }
+        }
+      }
+      catch (err) {
+        return null
+      }
+    }
+    else if (user) {
+      router.push("/dashboard/customer")
+    }
+  }
+
   useEffect(() => {
 
     const fetchStatus = async () => {
@@ -47,20 +80,21 @@ export default function Login() {
 
     }
 
+
     async function init() {
+      console.log("use effect")
       const res = await fetchStatus()
       if (res && res.ok) {
         const user = await res.json()
-        console.log("use effect", user)
-        if (user.role == 'chef') {
-          router.push("/dashboard/chef")
-        }
-        else if (user.role == 'customer') {
-          router.push("/dashboard/customer")
-        }
+        console.log("calling redirect")
+        let countNumber = 0
+        Redirect(countNumber, user)
+        console.log(countNumber)
+
       }
       else {
         setIsLoading(false)
+        return
       }
     }
 
@@ -121,28 +155,41 @@ export default function Login() {
 
       console.log('Login attempt:', { role: selectedRole, ...formData })
       if (res.ok) {
-        const user = (await res.json()).user
-        console.log(user.role)
-        if (user.role == 'chef') {
-          router.push("/dashboard/chef")
+
+        const user = await res.json()
+        if (user.otp_sent) {
+          setStep('otp')
+
+
         }
-        else if (user.role == 'customer') {
-          router.push("/dashboard/customer")
+        else {
+          Redirect(0, user.user)
         }
 
       }
       // Simulate OTP requirement for security
       // alert('For security, please enter the OTP sent to your registered email/phone.')
-      // setStep('otp')
     }
   }
 
-  const handleOtpSubmit = (e: React.FormEvent) => {
+  const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (validateOtpForm()) {
+            const res = await fetch('http://localhost:8000/api/auth/verify-otp/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ otp: formData.otp }),
+        credentials: 'include'
+      });
+      if (res.ok){
+        alert("account verification successful, you can login now")
+        setStep("login")
+      }
       // Here you would typically verify OTP with your backend
       console.log('OTP verification:', formData.otp)
-      alert(`${selectedRole === 'chef' ? 'Chef' : 'Customer'} login successful!`)
+      // alert(`${selectedRole === 'chef' ? 'Chef' : 'Customer'} login successful!`)
     }
   }
 
@@ -178,7 +225,7 @@ export default function Login() {
               <div className="auth-card p-5">
                 <div className="text-center mb-4">
                   <h2 className="fw-bold mb-2">
-                    {step === 'login' ? 'Welcome Back' : 'Verify OTP'}
+                    {step === 'login' ? 'Welcome Back abcd' : 'Verify OTP'}
                   </h2>
                   <p className="text-muted">
                     {step === 'login'

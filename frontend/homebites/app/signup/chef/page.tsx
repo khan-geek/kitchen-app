@@ -2,8 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 export default function ChefSignup() {
+  const router = useRouter()
+  
   const [step, setStep] = useState<'info' | 'otp'>('info')
   const [formData, setFormData] = useState({
     first_name: '',
@@ -103,16 +106,25 @@ export default function ChefSignup() {
       console.log('Chef info submitted:', formData)
       // Simulate OTP generation
       // alert('OTP has been sent to your email and phone number!')
-      // setStep('otp')
+      setStep('otp')
     }
   }
 
-  const handleOtpSubmit = (e: React.FormEvent) => {
+  const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (validateOtpForm()) {
-      // Here you would typically verify OTP with your backend
-      console.log('OTP verification:', formData.otp)
-      alert('Chef account created successfully! You will be asked for your kitchen details later.')
+       const res = await fetch('http://localhost:8000/api/auth/verify-otp/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ otp: formData.otp }),
+        credentials: 'include'
+      });
+      if (res.ok){
+        alert("account verification successful, you can login now")
+        router.push("/login")
+      }
     }
   }
 

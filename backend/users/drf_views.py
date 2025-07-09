@@ -67,14 +67,16 @@ class ChefSignupAPI(APIView):
             print(serializer.validated_data)
 
             user = serializer.save()
-            user.is_active = True  # Block login until verified
+            user.is_active = False  # Block login until verified
             user.save()
 
-            handle_otp_for_user(user)
-            return Response(
+            response = handle_otp_for_user(user,"signup", response = Response(
                 {"message": "Account created. Please verify your email."},
                 status=status.HTTP_201_CREATED,
-            )
+            ))
+
+            return response
+
         else:
             print(serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -92,17 +94,19 @@ class CustomerSignupAPI(APIView):
         if serializer.is_valid():
             print("valid")
             user = serializer.save()
-            user.is_active = True
+            user.is_active = False
             user.save()
 
-            handle_otp_for_user(user)
+            
 
-            return Response(
+            response = handle_otp_for_user(user,"signup", response = Response(
                 {"message": "Account created. Please verify your email."},
                 status=status.HTTP_201_CREATED,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            ))
 
+            return response
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LoginAPIView(APIView):
@@ -114,7 +118,9 @@ class LoginAPIView(APIView):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data["user"]
-
+            if (not user.is_active):
+                return handle_otp_for_user(user,"login",Response({"otp_sent":True}))
+           
             refresh = RefreshToken.for_user(user)
             response = Response(
                 {
@@ -123,7 +129,8 @@ class LoginAPIView(APIView):
                         "email": user.email,
                         "role": user.role,
                         "kitchen_name": user.kitchen_name,
-                    }
+                    },
+                    "otp_sent": False
                 }
             )
 
@@ -147,6 +154,26 @@ class LoginAPIView(APIView):
             print("logged in", response)
             print(response.cookies)
             return response
+
+            # signed_token = handle_otp_for_user(user,"login")
+            # print("logged in", response)
+            # # print(response.cookies)
+            # response = Response({
+            #     "message": "OTP sent to your email for verification."
+            # }, status=200)
+
+            # # Set signed OTP token as a cookie
+            # response.set_cookie(
+            #     key="otp_token",
+            #     value=signed_token,
+            #     max_age=300,  # 5 minutes
+            #     httponly=False,  # You want frontend JS to access it
+            #     secure=True,     # Only over HTTPS
+            #     samesite="Lax"
+            # )
+
+            # return response
+
         else:
             print(serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -282,11 +309,29 @@ class UserStatusAPIView(APIView):
             }
         )
 
+from .utils import verify_signed_token
+
 
 class VerifyOTPAPIView(APIView):
     def post(self, request):
-        email = request.data.get("email")
         otp = request.data.get("otp")
+        otp_token = request.COOKIES.get("otp_token")
+       
+        if not otp or not otp_token:
+            return Response({"detail": "OTP and token required."}, status=400)
+        
+        payload = verify_signed_token(otp_token)
+        if not payload:
+            return Response({"detail": "Invalid or expired token."}, status=400)
+
+        email = payload["email"]
+        print("email", email, "otp", otp)
+        # purpose = payload["purpose"]
+
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            return Response({"detail": "User not found."}, status=404)
 
         try:
             user = CustomUser.objects.get(email=email)
@@ -349,7 +394,9 @@ class PlaceOrderAPIView(APIView):
         print(OrderSerializer(order).data)
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
+
 from rest_framework.generics import RetrieveAPIView
+
 
 class KitchenDetailAPIView(RetrieveAPIView):
     def get(self, request, id):
@@ -358,14 +405,23 @@ class KitchenDetailAPIView(RetrieveAPIView):
             items = KitchenItem.objects.filter(chef=chef, is_published=True)
             serialized_items = KitchenItemSerializer(items, many=True).data
 
-            return Response({
-                "id": chef.id,
-                "name": chef.kitchen_name,
-                "cuisine_type": chef.kitchen_type if hasattr(chef, "kitchen_type") else "Unknown",
-                "food_items": serialized_items
-            })
+            return Response(
+                {
+                    "id": chef.id,
+                    "name": chef.kitchen_name,
+                    "cuisine_type": (
+                        chef.kitchen_type
+                        if hasattr(chef, "kitchen_type")
+                        else "Unknown"
+                    ),
+                    "food_items": serialized_items,
+                }
+            )
         except CustomUser.DoesNotExist:
-            return Response({"error": "Kitchen not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Kitchen not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
 
 class CustomerOrdersAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -374,10 +430,11 @@ class CustomerOrdersAPIView(APIView):
         if request.user.role != "customer":
             return Response({"error": "Access denied"}, status=403)
 
-        orders = Order.objects.filter(customer=request.user).prefetch_related('items__item')
+        orders = Order.objects.filter(customer=request.user).prefetch_related(
+            "items__item"
+        )
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data)
-
 
 
 class KitchenListAPIView(APIView):
@@ -388,18 +445,21 @@ class KitchenListAPIView(APIView):
         kitchens = []
 
         for chef in chefs:
-            items = KitchenItem.objects.filter(chef=chef, is_published= True)
+            items = KitchenItem.objects.filter(chef=chef, is_published=True)
             if items.exists():
-                kitchens.append({
-                    "id": chef.id,
-                    "name": chef.kitchen_name,
-                    "description": chef.first_name or "",
-                    "image": """ chef.profile_picture.url if chef.profile_picture else """ "/placeholder-kitchen.jpg",
-                    "rating": 4.5,  # You can add logic to calculate actual rating
-                    "foodCount": items.count(),
-                    "isOpen": True,  # Add logic later if needed
-                    "foodItems": KitchenItemSerializer(items, many=True).data
-                })
+                kitchens.append(
+                    {
+                        "id": chef.id,
+                        "name": chef.kitchen_name,
+                        "description": chef.first_name or "",
+                        "image": """ chef.profile_picture.url if chef.profile_picture else """
+                        "/placeholder-kitchen.jpg",
+                        "rating": 4.5,  # You can add logic to calculate actual rating
+                        "foodCount": items.count(),
+                        "isOpen": True,  # Add logic later if needed
+                        "foodItems": KitchenItemSerializer(items, many=True).data,
+                    }
+                )
 
         return Response(kitchens)
 
@@ -408,13 +468,12 @@ class ChefOrderListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role != 'chef':
-            return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
-        
-        orders = Order.objects.filter(chef=request.user).order_by('-created_at')
+        if request.user.role != "chef":
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        orders = Order.objects.filter(chef=request.user).order_by("-created_at")
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data)
-
 
 
 class ChefOrderViewSet(viewsets.ReadOnlyModelViewSet):
@@ -422,4 +481,61 @@ class ChefOrderViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsChef]
 
     def get_queryset(self):
-        return Order.objects.filter(chef=self.request.user).prefetch_related('items__item')
+        return Order.objects.filter(chef=self.request.user).prefetch_related(
+            "items__item"
+        )
+
+
+class GetKitchen(APIView):
+    permission_classes = [IsAuthenticated, IsChef]
+
+    def get(self, request):
+
+        kitchen = bool(request.user.kitchen_name)
+        if kitchen:
+            return Response({"kitchen": kitchen})
+        else:
+            return Response({"kitchen": kitchen})
+
+""" from utils import verify_signed_token
+class VerifyOTPAPIView(APIView):
+    def post(self, request):
+        otp = request.data.get("otp")
+        otp_token = request.data.get("otp_token")
+
+        if not otp or not otp_token:
+            return Response({"detail": "OTP and token required."}, status=400)
+
+        payload = verify_signed_token(otp_token)
+        if not payload:
+            return Response({"detail": "Invalid or expired token."}, status=400)
+
+        email = payload["email"]
+        purpose = payload["purpose"]
+
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            return Response({"detail": "User not found."}, status=404)
+
+        try:
+            otp_obj = EmailVerificationToken.objects.filter(user=user).latest("created_at")
+        except EmailVerificationToken.DoesNotExist:
+            return Response({"detail": "No OTP found."}, status=404)
+
+        if otp_obj.is_expired() or otp_obj.otp != otp:
+            return Response({"detail": "Invalid or expired OTP."}, status=400)
+
+        if purpose == "signup" and not user.is_active:
+            user.is_active = True
+            user.save()
+
+        otp_obj.delete()
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "message": f"{purpose.capitalize()} verified successfully."
+        }, status=200)
+ """

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import CustomUser, KitchenItem
+from .utils import handle_otp_for_user
 import uuid
 
 
@@ -21,19 +22,22 @@ class LoginSerializer(serializers.Serializer):
                 )
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError("Invalid credentials.")
-        user = authenticate(
-            request=self.context.get("request"), username=user.email, password=password
-        )
-        if not user:
+        print(user.email, password)
+        # user = authenticate(
+        #     request=self.context.get("request"), username=user.email, password=password
+        # )
+        if (user.check_password(password)):
+            data["user"] = user
+            return data
+        # print(user)
+        else:
             raise serializers.ValidationError("Invalid credentials.")
 
-        if not user.is_active:
-            raise serializers.ValidationError(
-                "Please verify your email before logging in."
-            )
+        # if not user.is_active:
+        #     raise serializers.ValidationError(
+        #         "Please verify your email before logging in."
+        #     )
 
-        data["user"] = user
-        return data
 
 
 class BaseUserSerializer(serializers.ModelSerializer):
@@ -68,11 +72,11 @@ class ChefUserSerializer(BaseUserSerializer):
         extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
-        validated_data["kitchen_name"] = (
+        """ validated_data["kitchen_name"] = (
             f"kitchen_{uuid.uuid4().hex[:8]}"
             if not validated_data.get("kitchen_name")
             else validated_data["kitchen_name"]
-        )
+        ) """
         validated_data["role"] = "chef"
         user = CustomUser.objects.create_user(**validated_data)
 

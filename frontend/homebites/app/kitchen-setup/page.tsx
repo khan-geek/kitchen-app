@@ -15,7 +15,7 @@ export default function KitchenSetup() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
 
   const checkAuthentication = async () => {
-    const res = await fetch('http://localhost:8000/api/auth/dashboard/chef', {
+    const res = await fetch('http://localhost:8000/api/auth/status', {
       method: "GET",
       credentials: "include"
 
@@ -25,53 +25,70 @@ export default function KitchenSetup() {
     }
     return false;
   }
+  // useEffect(() => {
+  //   // Check authentication
+  //   const checkAuth = () => {
+
+
+
+  //     // Check if kitchen is already set up
+
+
+
+
+  //   }
+
+
+  //   initKitchenSetup()
+  //   setIsLoading(false)
+  // }, [router])
   useEffect(() => {
-    // Check authentication
-    const checkAuth = () => {
 
-      const userToken = localStorage.getItem('userToken')
-      const userRole = localStorage.getItem('userRole')
-
-      if (!userToken || userRole !== 'chef') {
-        // Not authenticated or not a chef, redirect to login
-        router.push('/login?redirect=kitchen-setup')
-        return false
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/auth/status/', {
+          credentials: 'include' // Important: sends cookies
+        })
+        return res
+      }
+      catch (err) {
+        return null
       }
 
-      // Check if kitchen is already set up
-      const kitchenData = localStorage.getItem('kitchenData')
-      if (kitchenData) {
-        // Kitchen already set up, redirect to dashboard
-        router.push('/dashboard/chef')
-        return false
-      }
 
-      setIsAuthenticated(true)
-      return true
+
     }
 
 
-    const initKitchenSetup = async () => {
-      const check = await checkAuthentication()
-      if (check) {
-        const kitchenData = localStorage.getItem('kitchenData')
-        if (kitchenData) {
-          // Kitchen already set up, redirect to dashboard
-          router.push('/dashboard/chef')
-          return
+    async function init() {
+      const res = await fetchStatus()
+      if (res && res.ok) {
+        const user = await res.json()
+        if (user.role == 'chef') {
+          const res = await fetch('http://localhost:8000/api/auth/get-kitchen/', {
+            credentials: 'include' // Important: sends cookies
+          })
+          const data = await res.json()
+          if (data.kitchen) {
+            router.push("/dashboard/chef")
+          }
+          else {
+            setIsLoading(false)
+            setIsAuthenticated(true)
+          }
         }
-        setIsAuthenticated(true)
+        else if (user.role == 'customer') {
+          router.push("/dashboard/customer")
+        }
       }
       else {
-        router.push('/login?redirect=kitchen-setup')
-        return
-
+        router.push("/login")
       }
     }
 
-    initKitchenSetup()
-    setIsLoading(false)
+    init()
   }, [router])
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -110,15 +127,13 @@ export default function KitchenSetup() {
       const res = await fetch('http://localhost:8000/api/status', {
         method: "POST",
         credentials: "include",
-        body : JSON.stringify({formData})
+        body: JSON.stringify({ formData })
       });
       const data = await res.json();
       console.log(res.status)
       console.log(res)
       if (res.ok) {
         // Store kitchen data in localStorage for demo purposes
-        localStorage.setItem('kitchenData', data.kitchen_name)
-        console.log(localStorage.getItem('kitchenData'))
         alert('Kitchen setup completed! Welcome to your dashboard.')
         router.push('/dashboard/chef')
 
@@ -126,12 +141,12 @@ export default function KitchenSetup() {
     }
   }
 
-  const handleLogout = () => {
-    // Clear authentication data
-    localStorage.removeItem('userToken')
-    localStorage.removeItem('userRole')
-    localStorage.removeItem('chefInfo')
-    router.push('/')
+  const handleLogout = async () => {
+    await fetch('http://localhost:8000/api/auth/logout/', {
+      method: 'POST',
+      credentials: 'include',
+    })
+    router.push('/login')
   }
 
   // Show loading while checking authentication

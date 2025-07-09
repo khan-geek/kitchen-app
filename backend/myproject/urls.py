@@ -19,9 +19,7 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from users.views import set_all_published
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('users.urls')),  # Your main API prefix
-    # path('publish-all/', set_all_published, name='publish-all'),
 ]
